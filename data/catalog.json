@@ -1,0 +1,118 @@
+[
+  {
+    "id": "technostim",
+    "type": "product",
+    "name": "TechnoSTIM",
+    "category": "Therapy Equipment",
+    "description": "Portable electrical stimulation therapy device for a convenient mock rehabilitation setup.",
+    "image": "/images/technostim.png",
+    "price": 3500
+  },
+  {
+    "id": "quadrupled-cane",
+    "type": "product",
+    "name": "Quadrupled Cane",
+    "category": "Mobility",
+    "description": "Four-point support cane designed to provide additional balance and stability.",
+    "image": "/images/quadrupled-cane.png",
+    "price": 1999
+  },
+  {
+    "id": "wheelchair",
+    "type": "product",
+    "name": "Wheelchair",
+    "category": "Mobility",
+    "description": "Foldable wheelchair for everyday mobility support.",
+    "image": "/images/wheelchair.png",
+    "price": 4699
+  },
+  {
+    "id": "forearm-crutches",
+    "type": "product",
+    "name": "Forearm Crutches",
+    "category": "Mobility",
+    "description": "Adjustable forearm crutches for assisted walking and rehabilitation.",
+    "image": "/images/forearm-crutches.png",
+    "price": 2399
+  },
+  {
+    "id": "water-bottle",
+    "type": "product",
+    "name": "Water Bottle 1L",
+    "category": "Wellness",
+    "description": "One-litre reusable bottle for hydration during therapy and exercise.",
+    "image": "/images/water-bottle.png",
+    "price": 199
+  },
+  {
+    "id": "therapeutic-tape",
+    "type": "product",
+    "name": "Therapeutic Tape",
+    "category": "Recovery",
+    "description": "Flexible therapeutic tape for mock support and recovery use.",
+    "image": "/images/therapeutic-tape.png",
+    "price": 99
+  },
+  {
+    "id": "vestibular-ball",
+    "type": "product",
+    "name": "Vestibular Ball",
+    "category": "Exercise",
+    "description": "Exercise ball available in multiple sizes for balance and mobility activities.",
+    "image": "/images/vestibular-ball.png",
+    "variants": [
+      { "id": "small", "label": "Small", "price": 299 },
+      { "id": "medium", "label": "Medium", "price": 399 },
+      { "id": "large", "label": "Large", "price": 499 }
+    ]
+  },
+  {
+    "id": "dumbbells",
+    "type": "product",
+    "name": "Dumbbells",
+    "category": "Exercise",
+    "description": "Compact dumbbells for strength and rehabilitation exercises.",
+    "image": "/images/dumbbells.png",
+    "variants": [
+      { "id": "2lb", "label": "2 lbs", "price": 149 },
+      { "id": "4lb", "label": "4 lbs", "price": 199 },
+      { "id": "6lb", "label": "6 lbs", "price": 249 }
+    ]
+  },
+  {
+    "id": "compression-socks",
+    "type": "product",
+    "name": "Compression Socks",
+    "category": "Recovery",
+    "description": "Compression socks intended for comfort and everyday recovery support.",
+    "image": "/images/compression-socks.png",
+    "price": 1399
+  },
+  {
+    "id": "initial-assessment",
+    "type": "service",
+    "name": "Initial Therapy Assessment",
+    "category": "Consultation",
+    "description": "A mock initial assessment with a physical therapy professional.",
+    "image": "/images/service-assessment.svg",
+    "price": 850
+  },
+  {
+    "id": "therapy-session",
+    "type": "service",
+    "name": "Therapeutic Exercise Session",
+    "category": "Treatment",
+    "description": "A mock guided therapeutic exercise session tailored to the patient.",
+    "image": "/images/service-exercise.svg",
+    "price": 1200
+  },
+  {
+    "id": "home-visit",
+    "type": "service",
+    "name": "Home Visit Therapy Session",
+    "category": "Home Care",
+    "description": "A mock in-home physical therapy session for convenient care.",
+    "image": "/images/service-home.svg",
+    "price": 1800
+  }
+]
