@@ -396,9 +396,6 @@ function CartModal({
       >
         <div className="flex justify-between gap-5 border-b border-[#dfe7f1] pb-5">
           <div>
-            <span className="text-xs font-black uppercase tracking-[.13em] text-[#165bc8]">
-              Your selection
-            </span>
             <h2
               id="cart-modal-title"
               className="mt-1 text-3xl font-black tracking-tight"
