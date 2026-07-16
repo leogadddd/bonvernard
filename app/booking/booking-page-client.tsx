@@ -17,6 +17,9 @@ const secondaryButton =
 
 type Step = "consultation" | "details" | "schedule" | "notes" | "confirmation";
 type AppointmentPeriod = "AM" | "PM" | "";
+type BookingField = "fullName" | "phone" | "email" | "selectedDate" | "appointmentPeriod" | "acceptedTerms";
+type BookingErrors = Partial<Record<BookingField, string>>;
+type TouchedBookingFields = Partial<Record<BookingField, boolean>>;
 
 function dateKey(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
@@ -58,6 +61,18 @@ function createBookingId(): string {
   return `PHY-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
 }
 
+function visibleErrors(
+  errors: BookingErrors,
+  touched: TouchedBookingFields,
+  showAll: boolean,
+): BookingErrors {
+  return Object.fromEntries(
+    Object.entries(errors).filter(
+      ([field, error]) => error && (showAll || touched[field as BookingField]),
+    ),
+  ) as BookingErrors;
+}
+
 export function BookingPageClient() {
   const searchParams = useSearchParams();
   const selectedService = useMemo(() => {
@@ -86,6 +101,10 @@ export function BookingPageClient() {
   const [calendarMonth, setCalendarMonth] = useState(() => new Date());
   const [submitting, setSubmitting] = useState(false);
   const [bookingId, setBookingId] = useState("");
+  const [touchedFields, setTouchedFields] = useState<TouchedBookingFields>({});
+  const [attemptedSteps, setAttemptedSteps] = useState<
+    Partial<Record<Step, boolean>>
+  >({});
 
   const selectedBookingType =
     selectedService?.bookingTypes?.find(
@@ -96,25 +115,97 @@ export function BookingPageClient() {
     ? ["consultation", "details", "schedule", "notes", "confirmation"]
     : ["details", "schedule", "notes", "confirmation"];
   const stepIndex = steps.indexOf(step);
+  const detailsErrors: BookingErrors = {
+    fullName:
+      fullName.trim().length > 1 ? undefined : "Enter your full name.",
+    phone:
+      phone.trim().length > 6 ? undefined : "Enter a valid phone number.",
+    email: /^\S+@\S+\.\S+$/.test(email)
+      ? undefined
+      : "Enter a valid email address.",
+  };
+  const scheduleErrors: BookingErrors = {
+    selectedDate: selectedDate ? undefined : "Choose an appointment date.",
+    appointmentPeriod: appointmentPeriod
+      ? undefined
+      : "Choose AM or PM appointment.",
+  };
+  const notesErrors: BookingErrors = {
+    acceptedTerms: acceptedTerms
+      ? undefined
+      : "Accept the appointment terms to continue.",
+  };
+  const shownDetailsErrors = visibleErrors(
+    detailsErrors,
+    touchedFields,
+    Boolean(attemptedSteps.details),
+  );
+  const shownScheduleErrors = visibleErrors(
+    scheduleErrors,
+    touchedFields,
+    Boolean(attemptedSteps.schedule),
+  );
+  const shownNotesErrors = visibleErrors(
+    notesErrors,
+    touchedFields,
+    Boolean(attemptedSteps.notes),
+  );
   const canContinue =
     (step === "consultation" && Boolean(selectedBookingType)) ||
     (step === "details" &&
-      fullName.trim().length > 1 &&
-      phone.trim().length > 6 &&
-      /^\S+@\S+\.\S+$/.test(email)) ||
+      Object.values(detailsErrors).every((error) => !error)) ||
     (step === "schedule" &&
-      Boolean(selectedDate) &&
-      Boolean(appointmentPeriod)) ||
-    (step === "notes" && acceptedTerms);
+      Object.values(scheduleErrors).every((error) => !error)) ||
+    (step === "notes" && Object.values(notesErrors).every((error) => !error));
+
+  function markTouched(field: BookingField) {
+    setTouchedFields((current) => ({ ...current, [field]: true }));
+  }
+
+  function updateFullName(value: string) {
+    setFullName(value);
+    markTouched("fullName");
+  }
+
+  function updatePhone(value: string) {
+    setPhone(value);
+    markTouched("phone");
+  }
+
+  function updateEmail(value: string) {
+    setEmail(value);
+    markTouched("email");
+  }
+
+  function updateSelectedDate(value: string) {
+    setSelectedDate(value);
+    markTouched("selectedDate");
+  }
+
+  function updateAppointmentPeriod(value: AppointmentPeriod) {
+    setAppointmentPeriod(value);
+    markTouched("appointmentPeriod");
+  }
+
+  function updateAcceptedTerms(value: boolean) {
+    setAcceptedTerms(value);
+    markTouched("acceptedTerms");
+  }
 
   function goNext() {
-    if (!canContinue) return;
+    if (!canContinue) {
+      setAttemptedSteps((current) => ({ ...current, [step]: true }));
+      return;
+    }
     const nextStep = steps[stepIndex + 1];
     if (nextStep) setStep(nextStep);
   }
 
   function submitBooking() {
-    if (!canContinue || submitting) return;
+    if (!canContinue || submitting) {
+      setAttemptedSteps((current) => ({ ...current, [step]: true }));
+      return;
+    }
     setSubmitting(true);
     window.setTimeout(() => {
       setBookingId(createBookingId());
@@ -211,21 +302,24 @@ export function BookingPageClient() {
                 <StepFrame eyebrow="Step 2" title="Request details">
                   <div className="grid gap-4 sm:grid-cols-2">
                     <Field
+                      error={shownDetailsErrors.fullName}
                       label="Full name"
                       value={fullName}
-                      onChange={setFullName}
+                      onChange={updateFullName}
                     />
                     <Field
+                      error={shownDetailsErrors.phone}
                       label="Phone number"
                       type="tel"
                       value={phone}
-                      onChange={setPhone}
+                      onChange={updatePhone}
                     />
                     <Field
+                      error={shownDetailsErrors.email}
                       label="Email"
                       type="email"
                       value={email}
-                      onChange={setEmail}
+                      onChange={updateEmail}
                     />
                     <label className="grid gap-1.5 text-xs font-extrabold text-[#334155]">
                       Type of consultation
@@ -252,7 +346,7 @@ export function BookingPageClient() {
                       monthDate={calendarMonth}
                       selectedDate={selectedDate}
                       onMonthChange={setCalendarMonth}
-                      onSelectDate={setSelectedDate}
+                      onSelectDate={updateSelectedDate}
                     />
                     <div className="grid gap-4">
                       <div className="rounded-[12px] border border-[#dfe7f1] bg-[#f8fbff] p-4 text-sm">
@@ -269,6 +363,17 @@ export function BookingPageClient() {
                             ? `${appointmentPeriod} appointment`
                             : "Choose AM or PM"}
                         </span>
+                        {(shownScheduleErrors.selectedDate ||
+                          shownScheduleErrors.appointmentPeriod) && (
+                          <div className="mt-3 grid gap-1 text-xs font-bold text-[#c0392b]">
+                            {shownScheduleErrors.selectedDate && (
+                              <span>{shownScheduleErrors.selectedDate}</span>
+                            )}
+                            {shownScheduleErrors.appointmentPeriod && (
+                              <span>{shownScheduleErrors.appointmentPeriod}</span>
+                            )}
+                          </div>
+                        )}
                       </div>
                       <div className="grid gap-3">
                         {(["AM", "PM"] as const).map((period) => (
@@ -280,7 +385,7 @@ export function BookingPageClient() {
                             }
                             key={period}
                             type="button"
-                            onClick={() => setAppointmentPeriod(period)}
+                            onClick={() => updateAppointmentPeriod(period)}
                           >
                             {period} appointment
                           </button>
@@ -307,7 +412,7 @@ export function BookingPageClient() {
                         checked={acceptedTerms}
                         className="mt-1"
                         onChange={(event) =>
-                          setAcceptedTerms(event.target.checked)
+                          updateAcceptedTerms(event.target.checked)
                         }
                         type="checkbox"
                       />
@@ -317,6 +422,11 @@ export function BookingPageClient() {
                         Center to contact me about this booking.
                       </span>
                     </label>
+                    {shownNotesErrors.acceptedTerms && (
+                      <small className="font-bold text-[#c0392b]">
+                        {shownNotesErrors.acceptedTerms}
+                      </small>
+                    )}
                   </div>
                 </StepFrame>
               )}
@@ -374,11 +484,13 @@ function StepFrame({
 }
 
 function Field({
+  error,
   label,
   onChange,
   type = "text",
   value,
 }: {
+  error?: string;
   label: string;
   onChange: (value: string) => void;
   type?: string;
@@ -388,11 +500,17 @@ function Field({
     <label className="grid gap-1.5 text-xs font-extrabold text-[#334155]">
       {label}
       <input
-        className="h-11 rounded-[9px] border border-[#cbd5e1] px-3"
+        aria-invalid={Boolean(error)}
+        className={
+          error
+            ? "h-11 rounded-[9px] border border-[#c0392b] bg-[#fff8f7] px-3 outline-none ring-2 ring-[#f8d8d2]"
+            : "h-11 rounded-[9px] border border-[#cbd5e1] px-3"
+        }
         type={type}
         value={value}
         onChange={(event) => onChange(event.target.value)}
       />
+      {error && <small className="font-bold text-[#c0392b]">{error}</small>}
     </label>
   );
 }
@@ -500,7 +618,7 @@ function SubmittingState() {
           Submitting booking request
         </h2>
         <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-[#64748b]">
-          Checking the selected schedule and preparing your mock booking ID.
+          Checking the selected schedule and preparing your booking ID.
         </p>
       </div>
     </div>

@@ -1,18 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Banknote,
-  CreditCard,
+  LockKeyhole,
   MapPin,
   Package,
-  QrCode,
   ReceiptText,
-  Smartphone,
+  ShieldCheck,
   Store,
   Truck,
-  Wallet,
 } from "lucide-react";
 import catalogData from "@/data/catalog.json";
 import checkoutConfig from "@/data/checkout.json";
@@ -60,6 +58,8 @@ type CheckoutFields = {
   expiry: string;
   cvc: string;
 };
+type CheckoutErrors = Partial<Record<keyof CheckoutFields, string>>;
+type TouchedFields = Partial<Record<keyof CheckoutFields, boolean>>;
 
 const config = checkoutConfig as { deliveryFee: number; vouchers: Voucher[] };
 const peso = new Intl.NumberFormat("en-PH", {
@@ -100,13 +100,70 @@ function createOrderId(): string {
   return `PHY-ORD-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
 }
 
-function voucherDiscount(subtotal: number, voucher?: Voucher): number {
+function voucherAdjustment(subtotal: number, voucher?: Voucher): number {
   if (!voucher) return 0;
-  const discount =
+  const adjustment =
     voucher.type === "percentage"
       ? subtotal * (voucher.value / 100)
       : voucher.value;
-  return Math.min(subtotal, Math.max(0, discount));
+  return Math.max(-subtotal, adjustment);
+}
+
+function formatAdjustment(value: number): string {
+  if (value < 0) return `-${peso.format(Math.abs(value))}`;
+  if (value > 0) return `+${peso.format(value)}`;
+  return "None";
+}
+
+function validateDeliveryFields(fields: CheckoutFields): CheckoutErrors {
+  return {
+    recipient:
+      fields.recipient.trim().length > 1
+        ? undefined
+        : "Enter the recipient name.",
+    phone:
+      fields.phone.trim().length > 6
+        ? undefined
+        : "Enter a valid phone number.",
+    address:
+      fields.address.trim().length > 4
+        ? undefined
+        : "Enter the delivery address.",
+    city: fields.city.trim().length > 1 ? undefined : "Enter the city.",
+    province:
+      fields.province.trim().length > 1 ? undefined : "Enter the province.",
+    postalCode:
+      fields.postalCode.trim().length > 2
+        ? undefined
+        : "Enter the postal code.",
+  };
+}
+
+function validateCardFields(fields: CheckoutFields): CheckoutErrors {
+  return {
+    cardName:
+      fields.cardName.trim().length > 1 ? undefined : "Enter the name on card.",
+    cardNumber:
+      fields.cardNumber.replace(/\D/g, "").length >= 13
+        ? undefined
+        : "Enter a valid card number.",
+    expiry:
+      fields.expiry.trim().length >= 4 ? undefined : "Enter the expiry date.",
+    cvc: fields.cvc.trim().length >= 3 ? undefined : "Enter the CVC.",
+  };
+}
+
+function visibleErrors(
+  errors: CheckoutErrors,
+  touched: TouchedFields,
+  showAll: boolean,
+): CheckoutErrors {
+  return Object.fromEntries(
+    Object.entries(errors).filter(
+      ([field, error]) =>
+        error && (showAll || touched[field as keyof CheckoutFields]),
+    ),
+  ) as CheckoutErrors;
 }
 
 export function CheckoutPageClient() {
@@ -115,11 +172,16 @@ export function CheckoutPageClient() {
   const [step, setStep] = useState<CheckoutStep>("fulfillment");
   const [fulfillment, setFulfillment] = useState<Fulfillment>("delivery");
   const [payment, setPayment] = useState<Payment>("cod");
+  const [paymentLoading, setPaymentLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [orderId, setOrderId] = useState("");
   const [voucherCode, setVoucherCode] = useState("");
   const [voucherError, setVoucherError] = useState("");
   const [appliedVoucher, setAppliedVoucher] = useState<Voucher | undefined>();
+  const [touchedFields, setTouchedFields] = useState<TouchedFields>({});
+  const [attemptedSteps, setAttemptedSteps] = useState<
+    Partial<Record<CheckoutStep, boolean>>
+  >({});
   const [fields, setFields] = useState<CheckoutFields>({
     recipient: "",
     phone: "",
@@ -132,6 +194,7 @@ export function CheckoutPageClient() {
     expiry: "",
     cvc: "",
   });
+  const paymentLoadingTimer = useRef<number | undefined>(undefined);
 
   useEffect(() => {
     try {
@@ -146,29 +209,39 @@ export function CheckoutPageClient() {
     }
   }, []);
 
+  useEffect(() => {
+    return () => {
+      if (paymentLoadingTimer.current) {
+        window.clearTimeout(paymentLoadingTimer.current);
+      }
+    };
+  }, []);
+
   const cartCount = cart.reduce((total, line) => total + line.quantity, 0);
   const subtotal = cart.reduce(
     (total, line) => total + itemPrice(line.item, line.variant) * line.quantity,
     0,
   );
-  const discount = voucherDiscount(subtotal, appliedVoucher);
+  const voucherAdjustmentAmount = voucherAdjustment(subtotal, appliedVoucher);
   const shipping =
     fulfillment === "delivery" && cart.length > 0 ? config.deliveryFee : 0;
-  const total = Math.max(0, subtotal - discount) + shipping;
+  const total = Math.max(0, subtotal + voucherAdjustmentAmount) + shipping;
   const deliveryValid =
     fulfillment === "pickup" ||
-    (fields.recipient.trim().length > 1 &&
-      fields.phone.trim().length > 6 &&
-      fields.address.trim().length > 4 &&
-      fields.city.trim().length > 1 &&
-      fields.province.trim().length > 1 &&
-      fields.postalCode.trim().length > 2);
+    Object.values(validateDeliveryFields(fields)).every((error) => !error);
   const cardValid =
     payment !== "card" ||
-    (fields.cardName.trim().length > 1 &&
-      fields.cardNumber.replace(/\D/g, "").length >= 13 &&
-      fields.expiry.trim().length >= 4 &&
-      fields.cvc.trim().length >= 3);
+    Object.values(validateCardFields(fields)).every((error) => !error);
+  const deliveryErrors = visibleErrors(
+    validateDeliveryFields(fields),
+    touchedFields,
+    Boolean(attemptedSteps.address),
+  );
+  const cardErrors = visibleErrors(
+    validateCardFields(fields),
+    touchedFields,
+    Boolean(attemptedSteps.payment),
+  );
   const steps: CheckoutStep[] =
     fulfillment === "delivery"
       ? ["fulfillment", "address", "payment", "review", "confirmation"]
@@ -177,15 +250,19 @@ export function CheckoutPageClient() {
   const canContinue =
     (step === "fulfillment" && cart.length > 0) ||
     (step === "address" && deliveryValid) ||
-    (step === "payment" && cardValid) ||
+    (step === "payment" && cardValid && !paymentLoading) ||
     step === "review";
 
   function updateField(field: keyof CheckoutFields, value: string) {
     setFields((current) => ({ ...current, [field]: value }));
+    setTouchedFields((current) => ({ ...current, [field]: true }));
   }
 
   function goNext() {
-    if (!canContinue) return;
+    if (!canContinue) {
+      setAttemptedSteps((current) => ({ ...current, [step]: true }));
+      return;
+    }
     const nextStep = steps[stepIndex + 1];
     if (nextStep === "confirmation") {
       submitOrder();
@@ -202,6 +279,18 @@ export function CheckoutPageClient() {
   function chooseFulfillment(value: Fulfillment) {
     setFulfillment(value);
     if (value === "pickup" && step === "address") setStep("payment");
+  }
+
+  function choosePayment(value: Payment) {
+    if (value === payment) return;
+    if (paymentLoadingTimer.current) {
+      window.clearTimeout(paymentLoadingTimer.current);
+    }
+    setPayment(value);
+    setPaymentLoading(true);
+    paymentLoadingTimer.current = window.setTimeout(() => {
+      setPaymentLoading(false);
+    }, 520);
   }
 
   function applyVoucher() {
@@ -241,7 +330,7 @@ export function CheckoutPageClient() {
       <main className="mx-auto grid w-[min(1120px,calc(100%-32px))] gap-6 py-10 lg:grid-cols-[380px_minmax(0,1fr)]">
         <OrderSummary
           cart={cart}
-          discount={discount}
+          discount={voucherAdjustmentAmount}
           loaded={loaded}
           shipping={shipping}
           subtotal={subtotal}
@@ -276,25 +365,37 @@ export function CheckoutPageClient() {
               )}
 
               {step === "address" && (
-                <DeliveryFields fields={fields} onChange={updateField} />
+                <DeliveryFields
+                  errors={deliveryErrors}
+                  fields={fields}
+                  onChange={updateField}
+                />
               )}
 
               {step === "payment" && (
                 <>
-                  <PaymentSelector payment={payment} onChange={setPayment} />
-                  <PaymentPanel
-                    fields={fields}
-                    onChange={updateField}
-                    payment={payment}
-                  />
-                  <VoucherBox
-                    appliedVoucher={appliedVoucher}
-                    error={voucherError}
-                    onApply={applyVoucher}
-                    onChange={setVoucherCode}
-                    onRemove={removeVoucher}
-                    value={voucherCode}
-                  />
+                  <PaymentSelector payment={payment} onChange={choosePayment} />
+                  <SecurePaymentBadge />
+                  {paymentLoading ? (
+                    <PaymentLoadingPanel />
+                  ) : (
+                    <>
+                      <PaymentPanel
+                        errors={cardErrors}
+                        fields={fields}
+                        onChange={updateField}
+                        payment={payment}
+                      />
+                      <VoucherBox
+                        appliedVoucher={appliedVoucher}
+                        error={voucherError}
+                        onApply={applyVoucher}
+                        onChange={setVoucherCode}
+                        onRemove={removeVoucher}
+                        value={voucherCode}
+                      />
+                    </>
+                  )}
                 </>
               )}
 
@@ -304,7 +405,7 @@ export function CheckoutPageClient() {
                   payment={payment}
                   shipping={shipping}
                   subtotal={subtotal}
-                  discount={discount}
+                  discount={voucherAdjustmentAmount}
                   total={total}
                 />
               )}
@@ -434,8 +535,8 @@ function OrderSummary({
             <SummaryLine label="Subtotal" value={peso.format(subtotal)} />
             {discount ? (
               <SummaryLine
-                label="Voucher"
-                value={discount ? `-${peso.format(discount)}` : "None"}
+                label={discount < 0 ? "Voucher discount" : "Voucher adjustment"}
+                value={formatAdjustment(discount)}
               />
             ) : null}
             {shipping ? (
@@ -535,9 +636,11 @@ function FulfillmentSelector({
 }
 
 function DeliveryFields({
+  errors,
   fields,
   onChange,
 }: {
+  errors: CheckoutErrors;
   fields: CheckoutFields;
   onChange: (field: keyof CheckoutFields, value: string) => void;
 }) {
@@ -549,33 +652,39 @@ function DeliveryFields({
       </h2>
       <div className="grid gap-4 sm:grid-cols-2">
         <Field
+          error={errors.recipient}
           label="Recipient name"
           value={fields.recipient}
           onChange={(value) => onChange("recipient", value)}
         />
         <Field
+          error={errors.phone}
           label="Phone number"
           type="tel"
           value={fields.phone}
           onChange={(value) => onChange("phone", value)}
         />
         <Field
+          error={errors.address}
           label="Street / building / unit"
           wide
           value={fields.address}
           onChange={(value) => onChange("address", value)}
         />
         <Field
+          error={errors.city}
           label="City"
           value={fields.city}
           onChange={(value) => onChange("city", value)}
         />
         <Field
+          error={errors.province}
           label="Province"
           value={fields.province}
           onChange={(value) => onChange("province", value)}
         />
         <Field
+          error={errors.postalCode}
           label="Postal code"
           value={fields.postalCode}
           onChange={(value) => onChange("postalCode", value)}
@@ -596,33 +705,33 @@ function PaymentSelector({
     <section>
       <h2 className="mb-3 text-lg font-black">Payment method</h2>
       <div className="grid gap-3 sm:grid-cols-2">
-        <OptionButton
+        <PaymentOptionButton
           active={payment === "cod"}
-          icon={<Banknote className="h-5 w-5" />}
+          media={<Banknote className="h-9 w-9" />}
           label="COD"
           onClick={() => onChange("cod")}
           text="Pay in cash on delivery or pickup."
         />
-        <OptionButton
+        <PaymentOptionButton
           active={payment === "card"}
-          icon={<CreditCard className="h-5 w-5" />}
+          media={<PaymentImage alt="" src="/images/cards.png" />}
           label="Card"
           onClick={() => onChange("card")}
-          text="Mock card payment details."
+          text="card payment details."
         />
-        <OptionButton
+        <PaymentOptionButton
           active={payment === "qrph"}
-          icon={<QrCode className="h-5 w-5" />}
+          media={<PaymentImage alt="" src="/images/qrph.webp" />}
           label="QRPh"
           onClick={() => onChange("qrph")}
-          text="Scan a mock QRPh code."
+          text="Scan a QRPh code."
         />
-        <OptionButton
+        <PaymentOptionButton
           active={payment === "gcash"}
-          icon={<Smartphone className="h-5 w-5" />}
+          media={<PaymentImage alt="" src="/images/gcash.png" />}
           label="GCash"
           onClick={() => onChange("gcash")}
-          text="Pay using mock GCash instructions."
+          text="Pay using GCash instructions."
         />
       </div>
     </section>
@@ -630,40 +739,63 @@ function PaymentSelector({
 }
 
 function PaymentPanel({
+  errors,
   fields,
   onChange,
   payment,
 }: {
+  errors: CheckoutErrors;
   fields: CheckoutFields;
   onChange: (field: keyof CheckoutFields, value: string) => void;
   payment: Payment;
 }) {
   if (payment === "card") {
     return (
-      <section className="rounded-[14px] border border-[#dfe7f1] p-4">
-        <h3 className="mb-3 flex items-center gap-2 font-black">
-          <CreditCard aria-hidden="true" className="h-5 w-5 text-[#0a388f]" />
-          Card details
-        </h3>
-        <div className="grid gap-4 sm:grid-cols-2">
+      <section className="overflow-hidden rounded-[16px] border border-[#dfe7f1] bg-white">
+        <div className="grid grid-cols-[112px_minmax(0,1fr)] items-center gap-4 bg-[#f8fbff] p-4 sm:grid-cols-[150px_minmax(0,1fr)]">
+          <span className="grid h-[104px] place-items-center overflow-hidden rounded-[14px] border border-[#dfe7f1] bg-white p-3 sm:h-[120px] sm:p-4">
+            <img
+              alt=""
+              className="h-full max-h-[88px] w-full max-w-[120px] object-contain sm:max-h-[104px]"
+              src="/images/cards.png"
+            />
+          </span>
+          <div>
+            <h3 className="font-black">Card details</h3>
+            <p className="mt-1 text-sm leading-6 text-[#64748b]">
+              Enter card information to continue this checkout preview.
+            </p>
+          </div>
+        </div>
+        <div className="grid gap-4 p-4 sm:grid-cols-2">
           <Field
+            autoComplete="off"
+            error={errors.cardName}
             label="Name on card"
             wide
             value={fields.cardName}
             onChange={(value) => onChange("cardName", value)}
           />
           <Field
+            autoComplete="off"
+            error={errors.cardNumber}
+            inputMode="numeric"
             label="Card number"
             wide
             value={fields.cardNumber}
             onChange={(value) => onChange("cardNumber", value)}
           />
           <Field
+            autoComplete="off"
+            error={errors.expiry}
             label="Expiry"
             value={fields.expiry}
             onChange={(value) => onChange("expiry", value)}
           />
           <Field
+            autoComplete="off"
+            error={errors.cvc}
+            inputMode="numeric"
             label="CVC"
             value={fields.cvc}
             onChange={(value) => onChange("cvc", value)}
@@ -675,31 +807,47 @@ function PaymentPanel({
 
   const content = {
     cod: {
-      icon: <Banknote className="h-6 w-6" />,
+      media: <Banknote className="h-12 w-12" />,
       title: "Cash on delivery",
       text: "Prepare the exact amount when the items are delivered or picked up.",
     },
     qrph: {
-      icon: <QrCode className="h-6 w-6" />,
+      media: (
+        <img
+          alt=""
+          className="h-full max-h-[88px] w-full max-w-[120px] object-contain sm:max-h-[104px]"
+          src="/images/qrph.webp"
+        />
+      ),
       title: "QRPh",
-      text: "A mock QRPh code will be shown by the clinic after order confirmation.",
+      text: "A QRPh code will be shown by the clinic after order confirmation.",
     },
     gcash: {
-      icon: <Wallet className="h-6 w-6" />,
+      media: (
+        <img
+          alt=""
+          className="h-full max-h-[88px] w-full max-w-[120px] object-contain sm:max-h-[104px]"
+          src="/images/gcash.png"
+        />
+      ),
       title: "GCash",
-      text: "A mock GCash payment instruction will be sent after order confirmation.",
+      text: "A GCash payment instruction will be sent after order confirmation.",
     },
   }[payment];
 
   return (
-    <section className="rounded-[14px] border border-[#dfe7f1] bg-[#f8fbff] p-4">
-      <div className="flex items-center gap-3">
-        <span className="grid h-11 w-11 place-items-center rounded-[10px] bg-white text-[#0a388f]">
-          {content.icon}
+    <section className="rounded-[16px] border border-[#dfe7f1] bg-[#f8fbff] p-4">
+      <div className="grid grid-cols-[112px_minmax(0,1fr)] items-center gap-4 sm:grid-cols-[150px_minmax(0,1fr)]">
+        <span className="grid h-[104px] place-items-center overflow-hidden rounded-[14px] border border-[#dfe7f1] bg-white p-3 text-[#0a388f] sm:h-[120px] sm:p-4">
+          {content.media}
         </span>
         <div>
-          <strong className="block text-[#111827]">{content.title}</strong>
-          <p className="m-0 text-sm text-[#64748b]">{content.text}</p>
+          <strong className="block text-lg text-[#111827]">
+            {content.title}
+          </strong>
+          <p className="m-0 mt-1 text-sm leading-6 text-[#64748b]">
+            {content.text}
+          </p>
         </div>
       </div>
     </section>
@@ -732,14 +880,89 @@ function ReviewPanel({
         <SummaryLine label="Payment" value={paymentLabel(payment)} />
         <SummaryLine label="Subtotal" value={peso.format(subtotal)} />
         <SummaryLine
-          label="Voucher"
-          value={discount ? `-${peso.format(discount)}` : "None"}
+          label={discount < 0 ? "Voucher discount" : "Voucher adjustment"}
+          value={formatAdjustment(discount)}
         />
         <SummaryLine
           label="Delivery / pickup"
           value={shipping ? peso.format(shipping) : "Free"}
         />
         <SummaryLine label="Total" strong value={peso.format(total)} />
+      </div>
+    </section>
+  );
+}
+
+function PaymentImage({ alt, src }: { alt: string; src: string }) {
+  return (
+    <span className="grid h-20 w-24 shrink-0 place-items-center rounded-[12px] border border-[#dfe7f1] bg-white p-3">
+      <img alt={alt} className="h-full w-full object-contain" src={src} />
+    </span>
+  );
+}
+
+function PaymentOptionButton({
+  active,
+  label,
+  media,
+  onClick,
+  text,
+}: {
+  active: boolean;
+  label: string;
+  media: React.ReactNode;
+  onClick: () => void;
+  text: string;
+}) {
+  return (
+    <button
+      className={
+        active
+          ? "grid min-h-[128px] grid-cols-[96px_minmax(0,1fr)] items-center gap-4 rounded-[16px] border border-[#0a388f] bg-[#eff6ff] p-4 text-left text-[#0a388f]"
+          : "grid min-h-[128px] grid-cols-[96px_minmax(0,1fr)] items-center gap-4 rounded-[16px] border border-[#dfe7f1] bg-white p-4 text-left text-[#111827] hover:bg-[#f5f8fc]"
+      }
+      onClick={onClick}
+      type="button"
+    >
+      <span className="grid h-20 w-24 place-items-center rounded-[12px] bg-white p-2 text-[#0a388f]">
+        {media}
+      </span>
+      <span className="min-w-0">
+        <strong className="block text-base">{label}</strong>
+        <span className="mt-1 block text-sm leading-5 text-[#64748b]">
+          {text}
+        </span>
+      </span>
+    </button>
+  );
+}
+
+function SecurePaymentBadge() {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-[#d9efe5] bg-[#f2fbf7] p-3 text-sm text-[#0c6d4a]">
+      <span className="inline-flex items-center gap-2 font-extrabold">
+        <ShieldCheck aria-hidden="true" className="h-5 w-5" />
+        Secure connection
+      </span>
+      <span className="inline-flex items-center gap-2 text-xs font-bold text-[#64748b]">
+        <LockKeyhole aria-hidden="true" className="h-4 w-4" />
+        encrypted checkout
+      </span>
+    </div>
+  );
+}
+
+function PaymentLoadingPanel() {
+  return (
+    <section className="grid min-h-[186px] place-items-center rounded-[16px] border border-[#dfe7f1] bg-[#f8fbff] p-5 text-center">
+      <div>
+        <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-[#dceaff] border-t-[#0a388f]" />
+        <strong className="mt-4 block text-[#111827]">
+          Loading payment details
+        </strong>
+        <p className="mt-1 text-sm text-[#64748b]">
+          Preparing the selected payment method.
+        </p>
       </div>
     </section>
   );
@@ -776,12 +999,18 @@ function OptionButton({
 }
 
 function Field({
+  autoComplete,
+  error,
+  inputMode,
   label,
   onChange,
   type = "text",
   value,
   wide,
 }: {
+  autoComplete?: string;
+  error?: string;
+  inputMode?: "decimal" | "email" | "numeric" | "search" | "tel" | "text" | "url";
   label: string;
   onChange: (value: string) => void;
   type?: string;
@@ -798,11 +1027,19 @@ function Field({
     >
       {label}
       <input
-        className="h-11 rounded-[9px] border border-[#cbd5e1] px-3"
+        aria-invalid={Boolean(error)}
+        autoComplete={autoComplete}
+        className={
+          error
+            ? "h-11 rounded-[9px] border border-[#c0392b] bg-[#fff8f7] px-3 outline-none ring-2 ring-[#f8d8d2]"
+            : "h-11 rounded-[9px] border border-[#cbd5e1] px-3"
+        }
+        inputMode={inputMode}
         type={type}
         value={value}
         onChange={(event) => onChange(event.target.value)}
       />
+      {error && <small className="font-bold text-[#c0392b]">{error}</small>}
     </label>
   );
 }
@@ -813,7 +1050,7 @@ function SubmittingState() {
       <div>
         <div className="mx-auto h-14 w-14 animate-spin rounded-full border-4 border-[#dceaff] border-t-[#0a388f]" />
         <h2 className="mt-5 text-2xl font-black tracking-tight">
-          Placing mock order
+          Placing order
         </h2>
         <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-[#64748b]">
           Preparing the product order summary.

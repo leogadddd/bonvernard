@@ -6,9 +6,18 @@ import {
   type SetStateAction,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
-import { Plus } from "lucide-react";
+import {
+  ArrowRight,
+  Minus,
+  PackagePlus,
+  Plus,
+  ShoppingCart,
+  Trash2,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 import catalogData from "@/data/catalog.json";
 import { SiteHeader } from "@/components/site-header";
@@ -379,16 +388,54 @@ function CartModal({
   onRemove,
   onUpdateQuantity,
 }: CartModalProps) {
-  if (!open) return null;
+  const [animationState, setAnimationState] = useState<
+    "closed" | "opening" | "open" | "closing"
+  >(open ? "open" : "closed");
+  const frameRef = useRef<number | undefined>(undefined);
+  const timerRef = useRef<number | undefined>(undefined);
+
+  useEffect(() => {
+    if (frameRef.current) window.cancelAnimationFrame(frameRef.current);
+    if (timerRef.current) window.clearTimeout(timerRef.current);
+
+    if (open) {
+      setAnimationState("opening");
+      frameRef.current = window.requestAnimationFrame(() => {
+        setAnimationState("open");
+      });
+      return;
+    }
+
+    setAnimationState((current) => {
+      if (current === "closed") return current;
+      return "closing";
+    });
+    timerRef.current = window.setTimeout(() => {
+      setAnimationState("closed");
+    }, 220);
+
+    return () => {
+      if (frameRef.current) window.cancelAnimationFrame(frameRef.current);
+      if (timerRef.current) window.clearTimeout(timerRef.current);
+    };
+  }, [open]);
+
+  if (animationState === "closed") return null;
+
+  const cartVisible = animationState === "open";
 
   return (
     <div
-      className="fixed inset-0 z-50 flex justify-end bg-slate-900/55"
+      className={`fixed inset-0 z-50 flex justify-end bg-slate-900/55 transition-opacity duration-200 ease-out ${
+        cartVisible ? "opacity-100" : "opacity-0"
+      }`}
       role="presentation"
       onMouseDown={onClose}
     >
       <aside
-        className="flex h-screen w-full max-w-[480px] flex-col bg-white p-5 shadow-[-22px_0_70px_rgba(15,23,42,.18)] sm:p-6"
+        className={`flex h-screen w-full max-w-[480px] flex-col bg-white p-5 shadow-[-22px_0_70px_rgba(15,23,42,.18)] transition-transform duration-200 ease-out sm:p-6 ${
+          cartVisible ? "translate-x-0" : "translate-x-full"
+        }`}
         role="dialog"
         aria-modal="true"
         aria-labelledby="cart-modal-title"
@@ -409,14 +456,14 @@ function CartModal({
             onClick={onClose}
             aria-label="Close cart"
           >
-            X
+            <X aria-hidden="true" className="h-5 w-5" />
           </button>
         </div>
 
         {cart.length === 0 ? (
           <div className="flex min-h-[280px] flex-1 flex-col items-center justify-center text-center">
             <span className="grid h-14 w-14 place-items-center rounded-full bg-[#eff6ff] text-3xl text-[#165bc8]">
-              +
+              <PackagePlus aria-hidden="true" className="h-7 w-7" />
             </span>
             <strong className="mt-3">Your cart is empty</strong>
             <p className="mt-1 text-sm text-[#64748b]">
@@ -434,7 +481,7 @@ function CartModal({
                   <img
                     src={line.item.image}
                     alt=""
-                    className="h-[58px] w-[58px] rounded-[9px] bg-[#f5f8fc] object-contain"
+                    className="h-[58px] w-[58px] rounded-[9px] object-contain"
                   />
                   <div className="min-w-0">
                     <strong className="block truncate text-sm">
@@ -456,7 +503,10 @@ function CartModal({
                           onClick={() => onUpdateQuantity(line.key, -1)}
                           aria-label="Decrease quantity"
                         >
-                          -
+                          <Minus
+                            aria-hidden="true"
+                            className="mx-auto h-3.5 w-3.5"
+                          />
                         </button>
                         <span className="grid place-items-center text-xs font-extrabold">
                           {line.quantity}
@@ -467,7 +517,10 @@ function CartModal({
                           onClick={() => onUpdateQuantity(line.key, 1)}
                           aria-label="Increase quantity"
                         >
-                          +
+                          <Plus
+                            aria-hidden="true"
+                            className="mx-auto h-3.5 w-3.5"
+                          />
                         </button>
                       </div>
                       <strong className="ml-auto text-sm">
@@ -476,11 +529,12 @@ function CartModal({
                         )}
                       </strong>
                       <button
-                        className="border-0 bg-transparent text-xs font-extrabold text-[#c0392b]"
+                        className="grid h-8 w-8 place-items-center rounded-[8px] border border-[#f2d1cc] bg-[#fff8f7] text-[#c0392b] transition hover:bg-[#ffeceb]"
                         type="button"
                         onClick={() => onRemove(line.key)}
+                        aria-label={`Remove ${line.item.name} from cart`}
                       >
-                        Remove
+                        <Trash2 aria-hidden="true" className="h-4 w-4" />
                       </button>
                     </div>
                   </div>
@@ -488,10 +542,11 @@ function CartModal({
               ))}
             </div>
             <button
-              className="mt-3 self-start border-0 bg-transparent font-extrabold text-[#165bc8]"
+              className="mt-3 inline-flex self-start items-center gap-2 border-0 bg-transparent font-extrabold text-[#165bc8]"
               type="button"
               onClick={onClear}
             >
+              <Trash2 aria-hidden="true" className="h-4 w-4" />
               Clear cart
             </button>
           </>
@@ -503,7 +558,7 @@ function CartModal({
             <strong className="text-[#111827]">{cartCount}</strong>
           </div>
           <div className="flex justify-between py-1 text-sm text-[#64748b]">
-            <span>Mock delivery</span>
+            <span>delivery</span>
             <strong className="text-[#111827]">Free</strong>
           </div>
           <div className="mt-2 flex justify-between border-t border-dashed border-[#cbd5e1] pt-3 text-base text-[#111827]">
@@ -513,19 +568,21 @@ function CartModal({
         </div>
         {cart.length === 0 ? (
           <button
-            className={`${primaryButton} mt-4 w-full`}
+            className={`${primaryButton} mt-4 inline-flex w-full items-center justify-center gap-2`}
             type="button"
             disabled
           >
+            <ShoppingCart aria-hidden="true" className="h-4 w-4" />
             Checkout
           </button>
         ) : (
           <Link
-            className={`${primaryButton} mt-4 block w-full no-underline`}
+            className={`${primaryButton} mt-4 inline-flex w-full items-center justify-center gap-2 no-underline`}
             href="/checkout"
             onClick={onClose}
           >
             Checkout
+            <ArrowRight aria-hidden="true" className="h-4 w-4" />
           </Link>
         )}
       </aside>

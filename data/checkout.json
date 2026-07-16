@@ -1,17 +1,29 @@
 {
-  "deliveryFee": 100,
+  "deliveryFee": 150,
   "vouchers": [
     {
       "code": "PTCARE10",
       "label": "10% off product subtotal",
       "type": "percentage",
-      "value": 10
+      "value": -10
     },
     {
       "code": "THERAPY100",
       "label": "₱100 off product subtotal",
       "type": "fixed",
-      "value": 100
+      "value": -100
+    },
+    {
+      "code": "VELASCO",
+      "label": "25% off product subtotal",
+      "type": "percentage",
+      "value": -25
+    },
+    {
+      "code": "ARIATHALIA",
+      "label": "25% added to product subtotal",
+      "type": "percentage",
+      "value": 25
     }
   ]
 }

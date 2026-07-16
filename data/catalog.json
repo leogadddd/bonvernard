@@ -4,9 +4,18 @@
     "type": "product",
     "name": "TechnoSTIM",
     "category": "Therapy Equipment",
-    "description": "Portable electrical stimulation therapy device for a convenient mock rehabilitation setup.",
+    "description": "Portable electrical stimulation therapy device for a convenient rehabilitation setup.",
     "image": "/images/technoSTIM.png",
     "price": 3500
+  },
+  {
+    "id": "technostim-replacement-unit",
+    "type": "product",
+    "name": "TechnoSTIM Replacement Unit",
+    "category": "Therapy Equipment",
+    "description": "Replacement control unit for the TechnoSTIM electrical stimulation therapy device. Electrodes and cables are not included.",
+    "image": "/images/technoSTIM-replacement-unit.png",
+    "price": 1500
   },
   {
     "id": "quadruped",

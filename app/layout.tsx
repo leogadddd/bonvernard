@@ -13,7 +13,7 @@ const ptSans = PT_Sans({
 export const metadata: Metadata = {
   title: "PhysiCare Therapy Wellness Center",
   description:
-    "Mock products, services, and cart flow for PhysiCare Therapy Wellness Center.",
+    "products, services, and cart flow for PhysiCare Therapy Wellness Center.",
 };
 
 export default function RootLayout({
