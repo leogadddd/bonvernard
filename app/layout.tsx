@@ -11,9 +11,34 @@ const ptSans = PT_Sans({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_SITE_URL ?? "https://physicare-checkout.vercel.app",
+  ),
   title: "PhysiCare Therapy Wellness Center",
   description:
-    "products, services, and cart flow for PhysiCare Therapy Wellness Center.",
+    "Book therapy services and shop recovery essentials from PhysiCare Therapy Wellness Center.",
+  openGraph: {
+    title: "PhysiCare Therapy Wellness Center",
+    description:
+      "Book therapy services and shop recovery essentials from PhysiCare Therapy Wellness Center.",
+    siteName: "PhysiCare Therapy Wellness Center",
+    images: [
+      {
+        url: "/logo.png",
+        width: 510,
+        height: 458,
+        alt: "PhysiCare Therapy Wellness Center logo",
+      },
+    ],
+    type: "website",
+  },
+  twitter: {
+    card: "summary",
+    title: "PhysiCare Therapy Wellness Center",
+    description:
+      "Book therapy services and shop recovery essentials from PhysiCare Therapy Wellness Center.",
+    images: ["/logo.png"],
+  },
 };
 
 export default function RootLayout({
