@@ -12,7 +12,7 @@ export function RootExperience() {
   }, []);
 
   if (embedded === null) {
-    return <div className="boot-screen" aria-label="Loading" />;
+    return <div className="min-h-screen bg-white" aria-label="Loading" />;
   }
 
   return embedded ? <Storefront /> : <StandaloneShell page="Home" />;

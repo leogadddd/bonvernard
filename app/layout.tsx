@@ -1,16 +1,35 @@
 import type { Metadata } from "next";
+import { PT_Sans } from "next/font/google";
 import type { ReactNode } from "react";
+import { Toaster } from "sonner";
 import "./globals.css";
 
+const ptSans = PT_Sans({
+  subsets: ["latin"],
+  weight: ["400", "700"],
+  display: "swap",
+});
+
 export const metadata: Metadata = {
-  title: "PhysiCare Checkout Mockup",
-  description: "Embeddable mock products, services, cart, and checkout flow for PhysiCare.",
+  title: "PhysiCare Therapy Wellness Center",
+  description:
+    "Mock products, services, and cart flow for PhysiCare Therapy Wellness Center.",
 };
 
-export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
+export default function RootLayout({
+  children,
+}: Readonly<{ children: ReactNode }>) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body className={ptSans.className}>
+        {children}
+        <Toaster
+          richColors
+          position="top-right"
+          offset={65}
+          className="!right-8"
+        />
+      </body>
     </html>
   );
 }

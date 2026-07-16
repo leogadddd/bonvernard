@@ -5,16 +5,16 @@
     "name": "TechnoSTIM",
     "category": "Therapy Equipment",
     "description": "Portable electrical stimulation therapy device for a convenient mock rehabilitation setup.",
-    "image": "/images/technostim.png",
+    "image": "/images/technoSTIM.png",
     "price": 3500
   },
   {
-    "id": "quadrupled-cane",
+    "id": "quadruped",
     "type": "product",
-    "name": "Quadrupled Cane",
+    "name": "Quadruped Cane",
     "category": "Mobility",
     "description": "Four-point support cane designed to provide additional balance and stability.",
-    "image": "/images/quadrupled-cane.png",
+    "image": "/images/quadruped.jpg",
     "price": 1999
   },
   {
@@ -23,7 +23,7 @@
     "name": "Wheelchair",
     "category": "Mobility",
     "description": "Foldable wheelchair for everyday mobility support.",
-    "image": "/images/wheelchair.png",
+    "image": "/images/wheelchair.jpg",
     "price": 4699
   },
   {
@@ -32,7 +32,7 @@
     "name": "Forearm Crutches",
     "category": "Mobility",
     "description": "Adjustable forearm crutches for assisted walking and rehabilitation.",
-    "image": "/images/forearm-crutches.png",
+    "image": "/images/forearm_crutches.png",
     "price": 2399
   },
   {
@@ -41,7 +41,7 @@
     "name": "Water Bottle 1L",
     "category": "Wellness",
     "description": "One-litre reusable bottle for hydration during therapy and exercise.",
-    "image": "/images/water-bottle.png",
+    "image": "/images/water_bottle_1l.jpg",
     "price": 199
   },
   {
@@ -50,7 +50,7 @@
     "name": "Therapeutic Tape",
     "category": "Recovery",
     "description": "Flexible therapeutic tape for mock support and recovery use.",
-    "image": "/images/therapeutic-tape.png",
+    "image": "/images/therapeutic_tape.jpg",
     "price": 99
   },
   {
@@ -59,7 +59,7 @@
     "name": "Vestibular Ball",
     "category": "Exercise",
     "description": "Exercise ball available in multiple sizes for balance and mobility activities.",
-    "image": "/images/vestibular-ball.png",
+    "image": "/images/vestibular_ball.jpg",
     "variants": [
       { "id": "small", "label": "Small", "price": 299 },
       { "id": "medium", "label": "Medium", "price": 399 },
@@ -72,7 +72,7 @@
     "name": "Dumbbells",
     "category": "Exercise",
     "description": "Compact dumbbells for strength and rehabilitation exercises.",
-    "image": "/images/dumbbells.png",
+    "image": "/images/dumbbells.jpg",
     "variants": [
       { "id": "2lb", "label": "2 lbs", "price": 149 },
       { "id": "4lb", "label": "4 lbs", "price": 199 },
@@ -85,34 +85,44 @@
     "name": "Compression Socks",
     "category": "Recovery",
     "description": "Compression socks intended for comfort and everyday recovery support.",
-    "image": "/images/compression-socks.png",
+    "image": "/images/compression_socks.jpg",
     "price": 1399
   },
   {
-    "id": "initial-assessment",
+    "id": "consultation",
     "type": "service",
-    "name": "Initial Therapy Assessment",
-    "category": "Consultation",
-    "description": "A mock initial assessment with a physical therapy professional.",
-    "image": "/images/service-assessment.svg",
-    "price": 850
+    "name": "Consultation",
+    "category": "Appointment",
+    "description": "Appointment flow for choosing a physical therapy consultation type and requesting a preferred schedule.",
+    "image": "/images/onlineconsult.png",
+    "bookingTypes": [
+      { "id": "sports-physical-therapy", "label": "Sports Physical Therapy" },
+      {
+        "id": "neurologic-physical-therapy",
+        "label": "Neurologic Physical Therapy"
+      },
+      { "id": "pediatric-pt", "label": "Pediatric PT" },
+      {
+        "id": "geriatric-physical-therapy",
+        "label": "Geriatric Physical Therapy"
+      },
+      { "id": "online-consultation", "label": "Online Consultation" }
+    ]
   },
   {
-    "id": "therapy-session",
+    "id": "telehealth-services",
     "type": "service",
-    "name": "Therapeutic Exercise Session",
-    "category": "Treatment",
-    "description": "A mock guided therapeutic exercise session tailored to the patient.",
-    "image": "/images/service-exercise.svg",
-    "price": 1200
+    "name": "Telehealth Services",
+    "category": "Appointment",
+    "description": "Appointment flow for guided therapy check-ins and follow-up support through telehealth.",
+    "image": "/images/telehealth.png"
   },
   {
-    "id": "home-visit",
+    "id": "home-care-services",
     "type": "service",
-    "name": "Home Visit Therapy Session",
-    "category": "Home Care",
-    "description": "A mock in-home physical therapy session for convenient care.",
-    "image": "/images/service-home.svg",
-    "price": 1800
+    "name": "Home Care Services",
+    "category": "Appointment",
+    "description": "Appointment flow for therapy support delivered in the patient's home setting.",
+    "image": "/images/homecareservices.png"
   }
 ]

@@ -4,6 +4,11 @@ export type CatalogVariant = {
   price: number;
 };
 
+export type BookingType = {
+  id: string;
+  label: string;
+};
+
 export type CatalogItem = {
   id: string;
   type: "product" | "service";
@@ -11,6 +16,7 @@ export type CatalogItem = {
   category: string;
   description: string;
   image: string;
+  bookingTypes?: BookingType[];
   price?: number;
   variants?: CatalogVariant[];
 };

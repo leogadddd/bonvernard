@@ -1,5 +1,5 @@
-import { RootExperience } from "@/components/root-experience";
+import { Storefront } from "@/components/storefront";
 
 export default function HomePage() {
-  return <RootExperience />;
+  return <Storefront />;
 }

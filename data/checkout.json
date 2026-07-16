@@ -1,0 +1,17 @@
+{
+  "deliveryFee": 100,
+  "vouchers": [
+    {
+      "code": "PTCARE10",
+      "label": "10% off product subtotal",
+      "type": "percentage",
+      "value": 10
+    },
+    {
+      "code": "THERAPY100",
+      "label": "₱100 off product subtotal",
+      "type": "fixed",
+      "value": 100
+    }
+  ]
+}

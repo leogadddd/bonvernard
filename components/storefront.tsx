@@ -1,38 +1,32 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import Link from "next/link";
+import {
+  type Dispatch,
+  type SetStateAction,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import { Plus } from "lucide-react";
+import { toast } from "sonner";
 import catalogData from "@/data/catalog.json";
-import type { CartLine, CatalogItem, CatalogVariant } from "@/types/catalog";
+import { SiteHeader } from "@/components/site-header";
+import type { CatalogItem, CatalogVariant } from "@/types/catalog";
 
 const catalog = catalogData as CatalogItem[];
-type Filter = "all" | "product" | "service";
-type Stage = "shop" | "checkout" | "confirmation";
-type CheckoutFields = {
-  fullName: string;
-  email: string;
-  phone: string;
-  address: string;
-  city: string;
-  province: string;
-  postalCode: string;
-  cardName: string;
-  cardNumber: string;
-  expiry: string;
-  cvc: string;
+const cartStorageKey = "physicare-mock-cart";
+
+type StoredCartLine = {
+  itemId: string;
+  variantId?: string;
+  quantity: number;
 };
 
-const initialFields: CheckoutFields = {
-  fullName: "",
-  email: "",
-  phone: "",
-  address: "",
-  city: "",
-  province: "",
-  postalCode: "",
-  cardName: "",
-  cardNumber: "",
-  expiry: "",
-  cvc: "",
+type CartLine = StoredCartLine & {
+  key: string;
+  item: CatalogItem;
+  variant?: CatalogVariant;
 };
 
 const peso = new Intl.NumberFormat("en-PH", {
@@ -41,72 +35,112 @@ const peso = new Intl.NumberFormat("en-PH", {
   minimumFractionDigits: 2,
 });
 
-function luhnValid(value: string): boolean {
-  const digits = value.replace(/\D/g, "");
-  if (digits.length < 13 || digits.length > 19) return false;
-  let sum = 0;
-  let doubleDigit = false;
-  for (let index = digits.length - 1; index >= 0; index -= 1) {
-    let digit = Number(digits[index]);
-    if (doubleDigit) {
-      digit *= 2;
-      if (digit > 9) digit -= 9;
-    }
-    sum += digit;
-    doubleDigit = !doubleDigit;
-  }
-  return sum % 10 === 0;
-}
+const primaryButton =
+  "rounded-[10px] border px-4 py-3 text-center font-extrabold transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-45 disabled:shadow-none";
 
-function validExpiry(value: string): boolean {
-  const match = value.match(/^(0[1-9]|1[0-2])\/(\d{2})$/);
-  if (!match) return false;
-  const month = Number(match[1]);
-  const year = 2000 + Number(match[2]);
-  const now = new Date();
-  return year > now.getFullYear() || (year === now.getFullYear() && month >= now.getMonth() + 1);
-}
-
-function createOrderNumber(): string {
-  const date = new Date();
-  const datePart = `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, "0")}${String(date.getDate()).padStart(2, "0")}`;
-  const randomPart = Math.random().toString(36).slice(2, 8).toUpperCase();
-  return `PHY-${datePart}-${randomPart}`;
-}
-
-function linePrice(line: CartLine): number {
-  return line.variant?.price ?? line.item.price ?? 0;
-}
+const secondaryButton =
+  "rounded-[10px] border border-[#dceaff] bg-[#eff6ff] px-4 py-3 text-center font-extrabold text-[#0a388f] transition hover:bg-[#e2edff]";
 
 function itemPrice(item: CatalogItem, variant?: CatalogVariant): number {
   return variant?.price ?? item.price ?? item.variants?.[0]?.price ?? 0;
 }
 
-export function Storefront() {
-  const [filter, setFilter] = useState<Filter>("all");
-  const [stage, setStage] = useState<Stage>("shop");
-  const [cart, setCart] = useState<CartLine[]>([]);
-  const [selectedVariants, setSelectedVariants] = useState<Record<string, string>>({});
-  const [fields, setFields] = useState<CheckoutFields>(initialFields);
-  const [errors, setErrors] = useState<Partial<Record<keyof CheckoutFields, string>>>({});
-  const [orderNumber, setOrderNumber] = useState("");
+function cartKey(itemId: string, variantId?: string): string {
+  return `${itemId}:${variantId ?? "default"}`;
+}
 
-  const visibleItems = useMemo(
-    () => catalog.filter((item) => filter === "all" || item.type === filter),
-    [filter],
+function createLine(
+  item: CatalogItem,
+  variantId?: string,
+  quantity = 1,
+): CartLine {
+  const variant =
+    item.variants?.find((option) => option.id === variantId) ??
+    item.variants?.[0];
+  return {
+    itemId: item.id,
+    variantId: variant?.id,
+    quantity,
+    key: cartKey(item.id, variant?.id),
+    item,
+    variant,
+  };
+}
+
+function hydrateCart(storedLines: StoredCartLine[]): CartLine[] {
+  return storedLines
+    .map((line) => {
+      const item = catalog.find((candidate) => candidate.id === line.itemId);
+      if (!item || item.type !== "product" || line.quantity < 1)
+        return undefined;
+      return createLine(item, line.variantId, line.quantity);
+    })
+    .filter((line): line is CartLine => Boolean(line));
+}
+
+function serializeCart(lines: CartLine[]): StoredCartLine[] {
+  return lines.map(({ itemId, variantId, quantity }) => ({
+    itemId,
+    variantId,
+    quantity,
+  }));
+}
+
+export function Storefront() {
+  const [cart, setCart] = useState<CartLine[]>([]);
+  const [cartOpen, setCartOpen] = useState(false);
+  const [selectedVariants, setSelectedVariants] = useState<
+    Record<string, string>
+  >({});
+  const [cartLoaded, setCartLoaded] = useState(false);
+
+  const services = useMemo(
+    () => catalog.filter((item) => item.type === "service"),
+    [],
+  );
+  const products = useMemo(
+    () => catalog.filter((item) => item.type === "product"),
+    [],
+  );
+  const cartCount = cart.reduce((total, line) => total + line.quantity, 0);
+  const subtotal = cart.reduce(
+    (total, line) => total + itemPrice(line.item, line.variant) * line.quantity,
+    0,
   );
 
-  const cartCount = cart.reduce((total, line) => total + line.quantity, 0);
-  const subtotal = cart.reduce((total, line) => total + linePrice(line) * line.quantity, 0);
+  useEffect(() => {
+    try {
+      const storedValue = window.localStorage.getItem(cartStorageKey);
+      if (storedValue) {
+        setCart(hydrateCart(JSON.parse(storedValue) as StoredCartLine[]));
+      }
+    } catch {
+      window.localStorage.removeItem(cartStorageKey);
+    } finally {
+      setCartLoaded(true);
+    }
+  }, []);
 
-  function getVariant(item: CatalogItem): CatalogVariant | undefined {
-    const requestedId = selectedVariants[item.id];
-    return item.variants?.find((variant) => variant.id === requestedId) ?? item.variants?.[0];
+  useEffect(() => {
+    if (!cartLoaded) return;
+    window.localStorage.setItem(
+      cartStorageKey,
+      JSON.stringify(serializeCart(cart)),
+    );
+  }, [cart, cartLoaded]);
+
+  function getSelectedVariant(item: CatalogItem): CatalogVariant | undefined {
+    const selectedId = selectedVariants[item.id];
+    return (
+      item.variants?.find((variant) => variant.id === selectedId) ??
+      item.variants?.[0]
+    );
   }
 
   function addToCart(item: CatalogItem) {
-    const variant = getVariant(item);
-    const key = `${item.id}:${variant?.id ?? "default"}`;
+    const variant = getSelectedVariant(item);
+    const key = cartKey(item.id, variant?.id);
+
     setCart((current) => {
       const existing = current.find((line) => line.key === key);
       if (existing) {
@@ -114,7 +148,10 @@ export function Storefront() {
           line.key === key ? { ...line, quantity: line.quantity + 1 } : line,
         );
       }
-      return [...current, { key, item, variant, quantity: 1 }];
+      return [...current, createLine(item, variant?.id)];
+    });
+    toast.success(`Added ${item.name} to cart`, {
+      description: variant?.label,
     });
   }
 
@@ -122,367 +159,379 @@ export function Storefront() {
     setCart((current) =>
       current
         .map((line) =>
-          line.key === key ? { ...line, quantity: Math.max(0, line.quantity + amount) } : line,
+          line.key === key
+            ? { ...line, quantity: Math.max(0, line.quantity + amount) }
+            : line,
         )
         .filter((line) => line.quantity > 0),
     );
   }
 
-  function validate(): boolean {
-    const nextErrors: Partial<Record<keyof CheckoutFields, string>> = {};
-    const cardDigits = fields.cardNumber.replace(/\D/g, "");
-    const phoneDigits = fields.phone.replace(/\D/g, "");
-
-    if (fields.fullName.trim().length < 3) nextErrors.fullName = "Enter your full name.";
-    if (!/^\S+@\S+\.\S+$/.test(fields.email)) nextErrors.email = "Enter a valid email address.";
-    if (phoneDigits.length < 7 || phoneDigits.length > 15) nextErrors.phone = "Enter a valid phone number.";
-    if (fields.address.trim().length < 5) nextErrors.address = "Enter a complete street or unit address.";
-    if (fields.city.trim().length < 2) nextErrors.city = "Enter a city or municipality.";
-    if (fields.province.trim().length < 2) nextErrors.province = "Enter a province or region.";
-    if (!/^[A-Za-z0-9][A-Za-z0-9 -]{2,9}$/.test(fields.postalCode.trim())) {
-      nextErrors.postalCode = "Enter a valid postal code.";
-    }
-    if (fields.cardName.trim().length < 3) nextErrors.cardName = "Enter the name shown on the card.";
-    if (!luhnValid(cardDigits)) nextErrors.cardNumber = "Enter a valid test card number.";
-    if (!validExpiry(fields.expiry)) nextErrors.expiry = "Use a future date in MM/YY format.";
-    if (!/^\d{3,4}$/.test(fields.cvc)) nextErrors.cvc = "Enter a 3 or 4 digit security code.";
-
-    setErrors(nextErrors);
-    return Object.keys(nextErrors).length === 0;
-  }
-
-  function submitOrder(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!validate()) return;
-    setOrderNumber(createOrderNumber());
-    setStage("confirmation");
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }
-
-  function updateField(field: keyof CheckoutFields, value: string) {
-    let formatted = value;
-    if (field === "cardNumber") {
-      formatted = value
-        .replace(/\D/g, "")
-        .slice(0, 19)
-        .replace(/(.{4})/g, "$1 ")
-        .trim();
-    }
-    if (field === "expiry") {
-      const digits = value.replace(/\D/g, "").slice(0, 4);
-      formatted = digits.length > 2 ? `${digits.slice(0, 2)}/${digits.slice(2)}` : digits;
-    }
-    if (field === "cvc") formatted = value.replace(/\D/g, "").slice(0, 4);
-    setFields((current) => ({ ...current, [field]: formatted }));
-    setErrors((current) => ({ ...current, [field]: undefined }));
-  }
-
-  function resetOrder() {
-    setStage("shop");
-    setCart([]);
-    setFields(initialFields);
-    setErrors({});
-    setOrderNumber("");
-  }
-
   return (
-    <div className="store-app">
-      <header className="store-header">
-        <div className="store-brand">
-          <span className="store-logo">+</span>
-          <div>
-            <strong>PhysiCare</strong>
-            <span>Products &amp; Services</span>
-          </div>
-        </div>
-        <div className="cart-pill" aria-label={`${cartCount} cart items`}>
-          <span aria-hidden="true">▣</span>
-          <strong>{cartCount}</strong>
-        </div>
-      </header>
+    <div className="min-h-screen bg-[#f5f8fc]">
+      <SiteHeader
+        cartCount={cartCount}
+        onCartClick={() => setCartOpen(true)}
+        showCart
+      />
 
-      <section className="store-hero">
-        <span className="eyebrow light">Physical therapy essentials</span>
-        <h1>Care, recovery, and mobility in one place.</h1>
-        <p>Add products or services to the cart, then complete the mock checkout.</p>
-      </section>
+      <main className="mx-auto grid w-[min(1220px,calc(100%-34px))] gap-10 py-10 sm:gap-12 sm:py-14">
+        <ServiceSection services={services} />
+        <ProductSection
+          title="Other Products"
+          eyebrow="Shop recovery items"
+          items={products}
+          selectedVariants={selectedVariants}
+          onSelectVariant={setSelectedVariants}
+          onAdd={addToCart}
+        />
+      </main>
 
-      <div className="progress" aria-label="Checkout progress">
-        {[
-          ["shop", "1", "Choose items"],
-          ["checkout", "2", "Checkout"],
-          ["confirmation", "3", "Confirmation"],
-        ].map(([value, number, label]) => {
-          const order = { shop: 0, checkout: 1, confirmation: 2 } as const;
-          const active = order[stage] >= order[value as Stage];
-          return (
-            <div className={active ? "progress-step active" : "progress-step"} key={value}>
-              <span>{number}</span>
-              <strong>{label}</strong>
-            </div>
-          );
-        })}
-      </div>
+      <CartModal
+        cart={cart}
+        cartCount={cartCount}
+        open={cartOpen}
+        subtotal={subtotal}
+        onClose={() => setCartOpen(false)}
+        onClear={() => setCart([])}
+        onRemove={(key) =>
+          setCart((current) => current.filter((line) => line.key !== key))
+        }
+        onUpdateQuantity={updateQuantity}
+      />
 
-      {stage === "shop" && (
-        <main className="store-layout">
-          <section className="catalog-section">
-            <div className="section-heading">
-              <div>
-                <span className="eyebrow">Our catalogue</span>
-                <h2>Products and services</h2>
-              </div>
-              <div className="filter-tabs" role="group" aria-label="Catalogue filters">
-                {(["all", "product", "service"] as Filter[]).map((value) => (
-                  <button
-                    className={filter === value ? "active" : ""}
-                    key={value}
-                    onClick={() => setFilter(value)}
-                    type="button"
-                  >
-                    {value === "all" ? "All" : `${value[0].toUpperCase()}${value.slice(1)}s`}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="catalog-grid">
-              {visibleItems.map((item) => {
-                const variant = getVariant(item);
-                return (
-                  <article className="catalog-card" key={item.id}>
-                    <div className="catalog-image-wrap">
-                      <span className={`type-badge ${item.type}`}>{item.type}</span>
-                      <img src={item.image} alt={item.name} className="catalog-image" />
-                    </div>
-                    <div className="catalog-body">
-                      <span className="category">{item.category}</span>
-                      <h3>{item.name}</h3>
-                      <p>{item.description}</p>
-                      {item.variants && (
-                        <label className="variant-label">
-                          Option
-                          <select
-                            value={variant?.id}
-                            onChange={(event) =>
-                              setSelectedVariants((current) => ({
-                                ...current,
-                                [item.id]: event.target.value,
-                              }))
-                            }
-                          >
-                            {item.variants.map((option) => (
-                              <option key={option.id} value={option.id}>
-                                {option.label} — {peso.format(option.price)}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                      )}
-                      <div className="card-footer">
-                        <strong>{peso.format(itemPrice(item, variant))}</strong>
-                        <button type="button" onClick={() => addToCart(item)}>
-                          Add to cart
-                        </button>
-                      </div>
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
-          </section>
-
-          <aside className="cart-panel">
-            <div className="cart-title">
-              <div>
-                <span className="eyebrow">Your selection</span>
-                <h2>Cart</h2>
-              </div>
-              <span>{cartCount} item{cartCount === 1 ? "" : "s"}</span>
-            </div>
-
-            {cart.length === 0 ? (
-              <div className="empty-cart">
-                <span aria-hidden="true">＋</span>
-                <strong>Your cart is empty</strong>
-                <p>Add a product or service to begin.</p>
-              </div>
-            ) : (
-              <div className="cart-lines">
-                {cart.map((line) => (
-                  <div className="cart-line" key={line.key}>
-                    <img src={line.item.image} alt="" />
-                    <div className="cart-line-copy">
-                      <strong>{line.item.name}</strong>
-                      {line.variant && <span>{line.variant.label}</span>}
-                      <small>{peso.format(linePrice(line))}</small>
-                    </div>
-                    <div className="quantity-control" aria-label={`Quantity for ${line.item.name}`}>
-                      <button type="button" onClick={() => updateQuantity(line.key, -1)} aria-label="Decrease quantity">−</button>
-                      <span>{line.quantity}</span>
-                      <button type="button" onClick={() => updateQuantity(line.key, 1)} aria-label="Increase quantity">+</button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <div className="cart-summary">
-              <div><span>Subtotal</span><strong>{peso.format(subtotal)}</strong></div>
-              <div><span>Mock delivery</span><strong>Free</strong></div>
-              <div className="total"><span>Total</span><strong>{peso.format(subtotal)}</strong></div>
-            </div>
-            <button
-              className="primary-button wide"
-              disabled={cart.length === 0}
-              onClick={() => {
-                setStage("checkout");
-                window.scrollTo({ top: 0, behavior: "smooth" });
-              }}
-              type="button"
-            >
-              Continue to checkout
-            </button>
-          </aside>
-        </main>
-      )}
-
-      {stage === "checkout" && (
-        <main className="checkout-layout">
-          <form className="checkout-form" onSubmit={submitOrder} noValidate>
-            <div className="section-heading compact">
-              <div>
-                <span className="eyebrow">Mock checkout</span>
-                <h2>Billing and payment details</h2>
-              </div>
-              <button className="text-button" type="button" onClick={() => setStage("shop")}>← Back to shop</button>
-            </div>
-
-            <div className="form-card">
-              <h3>Contact information</h3>
-              <div className="form-grid">
-                <Field label="Full name" name="fullName" value={fields.fullName} error={errors.fullName} onChange={updateField} autoComplete="name" />
-                <Field label="Email address" name="email" type="email" value={fields.email} error={errors.email} onChange={updateField} autoComplete="email" />
-                <Field label="Phone number" name="phone" type="tel" value={fields.phone} error={errors.phone} onChange={updateField} autoComplete="tel" />
-              </div>
-            </div>
-
-            <div className="form-card">
-              <h3>Billing address</h3>
-              <div className="form-grid">
-                <Field label="Street, building, or unit number" name="address" value={fields.address} error={errors.address} onChange={updateField} autoComplete="street-address" wide />
-                <Field label="City / Municipality" name="city" value={fields.city} error={errors.city} onChange={updateField} autoComplete="address-level2" />
-                <Field label="Province / Region" name="province" value={fields.province} error={errors.province} onChange={updateField} autoComplete="address-level1" />
-                <Field label="Postal code" name="postalCode" value={fields.postalCode} error={errors.postalCode} onChange={updateField} autoComplete="postal-code" inputMode="numeric" />
-              </div>
-            </div>
-
-            <div className="form-card">
-              <div className="form-card-heading">
-                <h3>Payment details</h3>
-                <span>Mock payment only</span>
-              </div>
-              <p className="test-card-note">Use any Luhn-valid test number, such as 4242 4242 4242 4242, a future expiry date, and any 3-digit CVC.</p>
-              <div className="form-grid">
-                <Field label="Name on card" name="cardName" value={fields.cardName} error={errors.cardName} onChange={updateField} autoComplete="cc-name" wide />
-                <Field label="Card number" name="cardNumber" value={fields.cardNumber} error={errors.cardNumber} onChange={updateField} autoComplete="cc-number" inputMode="numeric" wide />
-                <Field label="Expiry (MM/YY)" name="expiry" value={fields.expiry} error={errors.expiry} onChange={updateField} autoComplete="cc-exp" inputMode="numeric" />
-                <Field label="CVC" name="cvc" value={fields.cvc} error={errors.cvc} onChange={updateField} autoComplete="cc-csc" inputMode="numeric" />
-              </div>
-            </div>
-
-            <button className="primary-button wide checkout-submit" type="submit">
-              Complete mock order · {peso.format(subtotal)}
-            </button>
-          </form>
-
-          <aside className="order-panel">
-            <span className="eyebrow">Order summary</span>
-            <h2>Your order</h2>
-            <div className="order-lines">
-              {cart.map((line) => (
-                <div className="order-line" key={line.key}>
-                  <img src={line.item.image} alt="" />
-                  <div>
-                    <strong>{line.item.name}</strong>
-                    <span>{line.variant?.label ? `${line.variant.label} · ` : ""}Qty {line.quantity}</span>
-                  </div>
-                  <b>{peso.format(linePrice(line) * line.quantity)}</b>
-                </div>
-              ))}
-            </div>
-            <div className="cart-summary">
-              <div><span>Subtotal</span><strong>{peso.format(subtotal)}</strong></div>
-              <div><span>Mock delivery</span><strong>Free</strong></div>
-              <div className="total"><span>Total</span><strong>{peso.format(subtotal)}</strong></div>
-            </div>
-          </aside>
-        </main>
-      )}
-
-      {stage === "confirmation" && (
-        <main className="confirmation-page">
-          <div className="confirmation-icon">✓</div>
-          <span className="eyebrow">Order confirmed</span>
-          <h2>Thank you, {fields.fullName.split(" ")[0] || "customer"}.</h2>
-          <p>This is a successful mock checkout. No payment was charged and no real order was created.</p>
-          <div className="order-number">
-            <span>Mock order number</span>
-            <strong>{orderNumber}</strong>
-          </div>
-          <div className="confirmation-summary">
-            <span>Total</span>
-            <strong>{peso.format(subtotal)}</strong>
-          </div>
-          <button className="primary-button" type="button" onClick={resetOrder}>Start another mock order</button>
-        </main>
-      )}
-
-      <footer className="store-footer">
-        <strong>PhysiCare</strong>
-        <span>Demonstration checkout only. No real payments are processed.</span>
+      <footer className="flex flex-col gap-2 border-t border-[#dfe7f1] bg-white px-[clamp(20px,4vw,64px)] py-6 text-xs text-[#64748b] sm:flex-row sm:items-center sm:justify-between">
+        <strong className="text-sm text-[#0a388f]">
+          © PhysiCare Therapy Wellness Center
+        </strong>
+        <span>
+          For more details and inquiry, send us an email at
+          PhysiCareTherapy@gmail.com or message us at (+63) 912-3456-789 / (02)
+          123-4567
+        </span>
       </footer>
     </div>
   );
 }
 
-type FieldProps = {
-  label: string;
-  name: keyof CheckoutFields;
-  value: string;
-  error?: string;
-  onChange: (field: keyof CheckoutFields, value: string) => void;
-  type?: string;
-  autoComplete?: string;
-  inputMode?: "text" | "numeric" | "tel" | "email";
-  wide?: boolean;
+function ServiceSection({ services }: { services: CatalogItem[] }) {
+  return (
+    <section>
+      <div className="mb-5">
+        <h2 className="mt-1 text-3xl font-black tracking-tight text-[#111827]">
+          Services
+        </h2>
+      </div>
+      <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
+        {services.map((service) => (
+          <article
+            className="overflow-hidden rounded-[18px] border border-[#dfe7f1] bg-white transition hover:-translate-y-1 hover:border-[#b7cdf0] hover:shadow-[0_15px_40px_rgba(13,49,101,.09)]"
+            key={service.id}
+          >
+            <div className="relative aspect-video w-full overflow-hidden bg-gradient-to-b from-[#fbfdff] to-[#f1f6fc]">
+              <img
+                src={service.image}
+                alt={service.name}
+                className="h-full w-full object-cover scale-[132%] mix-blend-multiply"
+              />
+            </div>
+            <div className="p-5">
+              <span className="text-[11px] font-extrabold uppercase tracking-[.08em] text-[#165bc8]">
+                {service.category}
+              </span>
+              <h3 className="mt-1.5 text-lg font-extrabold text-[#111827]">
+                {service.name}
+              </h3>
+              <p className="mt-2 min-h-[72px] text-sm leading-6 text-[#64748b]">
+                {service.description}
+              </p>
+              <Link
+                className={`${secondaryButton} mt-5 block w-full no-underline`}
+                href={`/booking?service=${encodeURIComponent(service.id)}`}
+              >
+                Book appointment
+              </Link>
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+type ProductSectionProps = {
+  title: string;
+  eyebrow: string;
+  items: CatalogItem[];
+  selectedVariants: Record<string, string>;
+  onSelectVariant: Dispatch<SetStateAction<Record<string, string>>>;
+  onAdd: (item: CatalogItem) => void;
 };
 
-function Field({
-  label,
-  name,
-  value,
-  error,
-  onChange,
-  type = "text",
-  autoComplete,
-  inputMode,
-  wide,
-}: FieldProps) {
+function ProductSection({
+  title,
+  eyebrow,
+  items,
+  selectedVariants,
+  onSelectVariant,
+  onAdd,
+}: ProductSectionProps) {
   return (
-    <label className={wide ? "field wide" : "field"}>
-      <span>{label}</span>
-      <input
-        aria-invalid={Boolean(error)}
-        aria-describedby={error ? `${name}-error` : undefined}
-        autoComplete={autoComplete}
-        inputMode={inputMode}
-        name={name}
-        onChange={(event) => onChange(name, event.target.value)}
-        type={type}
-        value={value}
-      />
-      {error && <small id={`${name}-error`}>{error}</small>}
-    </label>
+    <section>
+      <div className="mb-5">
+        <h2 className="mt-1 text-3xl font-black tracking-tight text-[#111827]">
+          {title}
+        </h2>
+      </div>
+      <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
+        {items.map((item) => {
+          const variant =
+            item.variants?.find(
+              (option) => option.id === selectedVariants[item.id],
+            ) ?? item.variants?.[0];
+
+          return (
+            <article
+              className="overflow-hidden rounded-[18px] border border-[#dfe7f1] bg-white transition hover:-translate-y-1 hover:border-[#b7cdf0] hover:shadow-[0_15px_40px_rgba(13,49,101,.09)]"
+              key={item.id}
+            >
+              <div className="relative h-[205px] bg-gradient-to-b from-[#fbfdff] to-[#f1f6fc] p-4 sm:h-[230px] md:h-[205px]">
+                <img
+                  src={item.image}
+                  alt={item.name}
+                  className="h-full w-full object-contain mix-blend-multiply"
+                />
+              </div>
+              <div className="p-5">
+                <span className="text-[11px] font-extrabold uppercase tracking-[.08em] text-[#165bc8]">
+                  {item.category}
+                </span>
+                <h3 className="mt-1.5 text-lg font-extrabold text-[#111827]">
+                  {item.name}
+                </h3>
+                <p className="mt-2 min-h-[58px] text-sm leading-6 text-[#64748b]">
+                  {item.description}
+                </p>
+                {item.variants && (
+                  <label className="mt-4 grid gap-1.5 text-xs font-extrabold text-[#334155]">
+                    Option
+                    <select
+                      className="w-full rounded-[9px] border border-[#dfe7f1] bg-white px-3 py-2.5 text-[#111827]"
+                      value={variant?.id}
+                      onChange={(event) =>
+                        onSelectVariant((current) => ({
+                          ...current,
+                          [item.id]: event.target.value,
+                        }))
+                      }
+                    >
+                      {item.variants.map((option) => (
+                        <option key={option.id} value={option.id}>
+                          {option.label} - {peso.format(option.price)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                <div className="mt-5 flex items-center justify-between gap-3">
+                  <strong className="text-lg">
+                    {peso.format(itemPrice(item, variant))}
+                  </strong>
+                  <button
+                    className={
+                      secondaryButton +
+                      " flex items-center justify-between gap-2"
+                    }
+                    type="button"
+                    onClick={() => onAdd(item)}
+                  >
+                    <Plus className="h-3 w-3" />
+                    Add to cart
+                  </button>
+                </div>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+type CartModalProps = {
+  cart: CartLine[];
+  cartCount: number;
+  open: boolean;
+  subtotal: number;
+  onClose: () => void;
+  onClear: () => void;
+  onRemove: (key: string) => void;
+  onUpdateQuantity: (key: string, amount: number) => void;
+};
+
+function CartModal({
+  cart,
+  cartCount,
+  open,
+  subtotal,
+  onClose,
+  onClear,
+  onRemove,
+  onUpdateQuantity,
+}: CartModalProps) {
+  if (!open) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex justify-end bg-slate-900/55"
+      role="presentation"
+      onMouseDown={onClose}
+    >
+      <aside
+        className="flex h-screen w-full max-w-[480px] flex-col bg-white p-5 shadow-[-22px_0_70px_rgba(15,23,42,.18)] sm:p-6"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="cart-modal-title"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <div className="flex justify-between gap-5 border-b border-[#dfe7f1] pb-5">
+          <div>
+            <span className="text-xs font-black uppercase tracking-[.13em] text-[#165bc8]">
+              Your selection
+            </span>
+            <h2
+              id="cart-modal-title"
+              className="mt-1 text-3xl font-black tracking-tight"
+            >
+              Cart
+            </h2>
+          </div>
+          <button
+            className="grid h-10 w-10 place-items-center rounded-[10px] border border-[#dfe7f1] bg-white font-black text-[#111827]"
+            type="button"
+            onClick={onClose}
+            aria-label="Close cart"
+          >
+            X
+          </button>
+        </div>
+
+        {cart.length === 0 ? (
+          <div className="flex min-h-[280px] flex-1 flex-col items-center justify-center text-center">
+            <span className="grid h-14 w-14 place-items-center rounded-full bg-[#eff6ff] text-3xl text-[#165bc8]">
+              +
+            </span>
+            <strong className="mt-3">Your cart is empty</strong>
+            <p className="mt-1 text-sm text-[#64748b]">
+              Add a product to begin.
+            </p>
+          </div>
+        ) : (
+          <>
+            <div className="min-h-0 flex-1 overflow-auto pr-1">
+              {cart.map((line) => (
+                <div
+                  className="grid grid-cols-[58px_minmax(0,1fr)] gap-3 border-b border-[#edf1f6] py-3"
+                  key={line.key}
+                >
+                  <img
+                    src={line.item.image}
+                    alt=""
+                    className="h-[58px] w-[58px] rounded-[9px] bg-[#f5f8fc] object-contain"
+                  />
+                  <div className="min-w-0">
+                    <strong className="block truncate text-sm">
+                      {line.item.name}
+                    </strong>
+                    {line.variant && (
+                      <span className="mt-0.5 block text-xs text-[#64748b]">
+                        {line.variant.label}
+                      </span>
+                    )}
+                    <small className="mt-0.5 block text-xs text-[#64748b]">
+                      {peso.format(itemPrice(line.item, line.variant))}
+                    </small>
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                      <div className="grid grid-cols-[28px_28px_28px] overflow-hidden rounded-lg border border-[#dfe7f1] text-center">
+                        <button
+                          className="h-8 bg-[#f7f9fc] text-[#0a388f]"
+                          type="button"
+                          onClick={() => onUpdateQuantity(line.key, -1)}
+                          aria-label="Decrease quantity"
+                        >
+                          -
+                        </button>
+                        <span className="grid place-items-center text-xs font-extrabold">
+                          {line.quantity}
+                        </span>
+                        <button
+                          className="h-8 bg-[#f7f9fc] text-[#0a388f]"
+                          type="button"
+                          onClick={() => onUpdateQuantity(line.key, 1)}
+                          aria-label="Increase quantity"
+                        >
+                          +
+                        </button>
+                      </div>
+                      <strong className="ml-auto text-sm">
+                        {peso.format(
+                          itemPrice(line.item, line.variant) * line.quantity,
+                        )}
+                      </strong>
+                      <button
+                        className="border-0 bg-transparent text-xs font-extrabold text-[#c0392b]"
+                        type="button"
+                        onClick={() => onRemove(line.key)}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <button
+              className="mt-3 self-start border-0 bg-transparent font-extrabold text-[#165bc8]"
+              type="button"
+              onClick={onClear}
+            >
+              Clear cart
+            </button>
+          </>
+        )}
+
+        <div className="mt-5 border-t border-[#dfe7f1] pt-4">
+          <div className="flex justify-between py-1 text-sm text-[#64748b]">
+            <span>Items</span>
+            <strong className="text-[#111827]">{cartCount}</strong>
+          </div>
+          <div className="flex justify-between py-1 text-sm text-[#64748b]">
+            <span>Mock delivery</span>
+            <strong className="text-[#111827]">Free</strong>
+          </div>
+          <div className="mt-2 flex justify-between border-t border-dashed border-[#cbd5e1] pt-3 text-base text-[#111827]">
+            <span>Total</span>
+            <strong>{peso.format(subtotal)}</strong>
+          </div>
+        </div>
+        {cart.length === 0 ? (
+          <button
+            className={`${primaryButton} mt-4 w-full`}
+            type="button"
+            disabled
+          >
+            Checkout
+          </button>
+        ) : (
+          <Link
+            className={`${primaryButton} mt-4 block w-full no-underline`}
+            href="/checkout"
+            onClick={onClose}
+          >
+            Checkout
+          </Link>
+        )}
+      </aside>
+    </div>
   );
 }
